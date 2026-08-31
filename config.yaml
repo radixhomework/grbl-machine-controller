@@ -1,0 +1,29 @@
+serial:
+  port: /dev/ttyUSB0
+  baud: 115200
+  status_poll_interval: 0.15
+mqtt:
+  enabled: false
+  host: homeassistant.local
+  port: 1883
+  username: ''
+  password: ''
+  base_topic: cnc
+  discovery_prefix: homeassistant
+tools:
+  1:
+    diameter: 6.0
+    note: 6mm endmill
+  2:
+    diameter: 3.175
+    note: 1/8" endmill
+probe:
+  fast_feed: 300
+  slow_feed: 30
+  retract: 2.0
+  target: 20.0
+  z_probe_size: 0.0
+defaults:
+  jog_feed: 2000
+  jog_distance: 1.0
+  spindle_rpm: 10000
