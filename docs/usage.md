@@ -25,7 +25,7 @@ machine position, overrides and job progress at a glance.
 │    view presets in the top-right)    │  Spindle   │
 │                                      │  Job       │
 ├──────────────────────────────────────┴───────────┤
-│                  Serial log                      │
+│        Command log: # | Command | State | Response│
 └──────────────────────────────────────────────────┘
 ```
 
@@ -92,6 +92,22 @@ If a job triggers an alarm, the state turns red, the job halts, and
   table), Exit
 - **Machine** — home, unlock, feed hold, resume, soft reset, reconnect
 - **Help** — About
+
+## Command log
+
+The bottom panel is a table with one row per command:
+
+| Column | Contents |
+|---|---|
+| **#** | Sequential command number (shared counter across MDI, jobs, probing) |
+| **Command** | The line sent to GRBL |
+| **State** | The machine state when the command was sent (Idle, Run…) |
+| **Response** | What GRBL answered: `ok`, `error:N`, `[PRB:…]`, `ALARM:N`… |
+
+Responses in red are errors, alarms, or timeouts. Machine-initiated messages
+and progress info (e.g. "Probe: contact at …", "Job complete") appear as
+unnumbered rows. Status report spam is not logged — it feeds the DRO and
+status bar instead.
 
 ## 3D preview
 

@@ -63,6 +63,17 @@ class GRBLAdapter:
         self._rx_thread: Optional[threading.Thread] = None
         self._poll_thread: Optional[threading.Thread] = None
         self._cmd_thread: Optional[threading.Thread] = None
+        self._seq = 0
+        self._seq_lock = threading.Lock()
+
+    def _next_seq(self) -> int:
+        with self._seq_lock:
+            self._seq += 1
+            return self._seq
+
+    def _log_record(self, seq: Optional[int], cmd: str, state_sent: str, resp: str) -> None:
+        """Emit a structured command record: (number, command, state, response)."""
+        self.on_log({"seq": seq, "cmd": cmd, "state": state_sent, "resp": resp})
 
     # ---- lifecycle -------------------------------------------------------
     def connect(self) -> None:
@@ -108,22 +119,23 @@ class GRBLAdapter:
         """Serialized sender for one-off buffered commands (settings, G10...)."""
         while not self._stop.is_set():
             try:
-                line, result = self._cmd_queue.get(timeout=0.1)
+                line, result, seq, st = self._cmd_queue.get(timeout=0.1)
             except queue.Empty:
                 continue
             self._awaiting: List[tuple] = getattr(self, "_awaiting", [])
-            self._awaiting.append((line, result))
+            self._awaiting.append((line, result, seq, st))
             self.transport.write_line(line)
 
     def send(self, line: str, timeout: float = 30.0) -> CommandResult:
         """Send a buffered command and wait for its ok/error."""
         result = CommandResult()
-        self._cmd_queue.put((line, result))
+        seq, st = self._next_seq(), self.state.snapshot().grbl_state
+        self._cmd_queue.put((line, result, seq, st))
         result.wait(timeout)
         if not result.done.is_set():
             result.ok = False
             result.error_code = -1  # timeout
-            self.on_log(f">> {line}  ⇒  ⏱ no response (timeout)")
+            self._log_record(seq, line, st, "⏱ no response (timeout)")
         return result
 
     # ---- parsing ---------------------------------------------------------
@@ -135,9 +147,10 @@ class GRBLAdapter:
         if line.startswith("<") and line.endswith(">"):
             self._parse_status(line)
             return
-        self.on_log(f"<< {line}")
+        # machine-initiated lines are shown as response-only records
         if line.startswith("ALARM:"):
             code = int(line.split(":", 1)[1])
+            self._log_record(None, "", self.state.snapshot().grbl_state, line)
             self.state.update(grbl_state="Alarm", alarm_code=code, job_running=False)
             for cb in list(self.on_alarm):
                 try:
@@ -147,12 +160,10 @@ class GRBLAdapter:
             return
         if line == "ok":
             if self.ack_handler and self.ack_handler(line):
-                return  # streamed line: the streamer logs the command⇒response pair
+                return  # streamed line: the streamer emits its own record
             pending = getattr(self, "_awaiting", [])
             if pending:
-                self._resolve_pending(True, None, line)  # logs the pair
-            else:
-                self.on_log(f"<< {line}")  # unsolicited ack
+                self._resolve_pending(True, None, line)  # emits the record
             return
         m = re.match(r"error:(\d+)", line)
         if m:
@@ -164,13 +175,15 @@ class GRBLAdapter:
             if pending:
                 self._resolve_pending(False, code, line)
             else:
-                self.on_log(f"<< {line}")
+                self._log_record(None, "", self.state.snapshot().grbl_state, line)
             return
         if line.startswith("[PRB:"):
             self._parse_probe(line)
+            self._log_record(None, "", self.state.snapshot().grbl_state, line)
             return
         if line.startswith("[MSG:") or line.startswith("Grbl") or line.startswith("["):
-            return  # informational
+            self._log_record(None, "", self.state.snapshot().grbl_state, line)
+            return
         # unknown async line — resolve oldest pending anyway to avoid deadlock
         self._resolve_pending(True, None, line)
 
@@ -178,14 +191,14 @@ class GRBLAdapter:
         # single-flight: one buffered command in flight from _cmd_loop
         pending: List[tuple] = getattr(self, "_awaiting", [])
         if pending:
-            sent_line, result = pending.pop(0)
+            sent_line, result, seq, st = pending.pop(0)
             if result.done.is_set():
                 return  # already timed out in send()
             result.ok = ok
             result.error_code = code
             result.response = response
             result.done.set()
-            self.on_log(f">> {sent_line}  ⇒  {response}")
+            self._log_record(seq, sent_line, st, response)
 
     def _parse_status(self, line: str) -> None:
         body = line[1:-1]

@@ -27,7 +27,10 @@ class JobManager:
         self.state = state
         self.on_log = on_log or (lambda s: None)
         # delegate dynamically so a late on_log assignment (main window) is honored
-        self.streamer = GCodeStreamer(adapter.transport, on_log=lambda s: self.on_log(s))
+        self.streamer = GCodeStreamer(adapter.transport,
+                                      on_log=lambda s: self.on_log(s),
+                                      next_seq=adapter._next_seq,
+                                      state=state)
         adapter.ack_handler = self.streamer.on_line
         adapter.on_alarm.append(self._on_alarm)
 

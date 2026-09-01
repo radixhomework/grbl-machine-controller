@@ -16,9 +16,13 @@ SAFETY_MARGIN = 2  # headroom for real-time bytes that share the wire
 
 
 class GCodeStreamer:
-    def __init__(self, transport, on_log: Optional[Callable[[str], None]] = None):
+    def __init__(self, transport, on_log: Optional[Callable[[object], None]] = None,
+                 next_seq: Optional[Callable[[], int]] = None,
+                 state=None):
         self.transport = transport
         self.on_log = on_log or (lambda s: None)
+        self.next_seq = next_seq    # shared command counter (adapter's)
+        self.state = state          # MachineState, for the state-at-send column
         self.rx_size = RX_BUFFER_SIZE
         self._in_flight = 0
         self._pending: List[tuple] = []  # (nbytes, line, ack_cb), FIFO
@@ -43,10 +47,10 @@ class GCodeStreamer:
         with self._lock:
             if not self._pending:
                 return False  # ack for a one-off command, not the stream
-            nbytes, sent_line, cb = self._pending.pop(0)
+            nbytes, sent_line, cb, seq, st = self._pending.pop(0)
             self._in_flight = max(0, self._in_flight - nbytes)
         self._wake.set()
-        cb(line)
+        cb(line, seq, st)
         return True
 
     # ---- streaming ---------------------------------------------------------
@@ -114,16 +118,18 @@ class GCodeStreamer:
                         self._in_flight += nbytes
                         index = self._next_index
                         self._next_index += 1
-                        self._pending.append((nbytes, line, self._make_ack(index, total)))
+                        seq = self.next_seq() if self.next_seq else None
+                        st = self.state.snapshot().grbl_state if self.state else ""
+                        self._pending.append((nbytes, line, self._make_ack(index, total), seq, st))
                         sent = True
             if not sent:
                 self._wake.wait(timeout=0.05)
                 self._wake.clear()
 
     def _make_ack(self, index: int, total: int) -> Callable:
-        def ack(line: str):
+        def ack(line: str, seq, st):
             self._acked_count += 1
-            self.on_log(f">> {self._lines[index]}  ⇒  {line}")
+            self.on_log({"seq": seq, "cmd": self._lines[index], "state": st, "resp": line})
             if line.startswith("error:"):
                 self._error = f"GRBL {line} at line {index + 1}: {self._lines[index]!r}"
                 self._abort = True

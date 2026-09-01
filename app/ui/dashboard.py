@@ -7,12 +7,12 @@ with the log panel across the bottom.
 from __future__ import annotations
 
 from PySide6.QtCore import QThread, Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QGridLayout,
-    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QProgressBar,
-    QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter, QVBoxLayout,
-    QWidget,
+    QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QProgressBar,
+    QPushButton, QScrollArea, QSizePolicy, QSpinBox, QSplitter, QTreeWidget,
+    QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 from PySide6.QtWidgets import QStyle
 
@@ -75,21 +75,55 @@ class Dashboard(QWidget):
         h_split.setStretchFactor(0, 1)
         h_split.setSizes([620, 330])
 
-        self.log = QPlainTextEdit()
-        self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(500)
+        # ---- command log table: (#, command, state, response) -------------
+        self.log = QTreeWidget()
+        self.log.setColumnCount(4)
+        self.log.setHeaderLabels(["#", "Command", "State", "Response"])
+        self.log.setRootIsDecorated(False)
+        self.log.setUniformRowHeights(True)
+        self.log.setAlternatingRowColors(True)
         self.log.setFont(_mono())
+        self.log.header().resizeSection(0, 46)
+        self.log.header().resizeSection(2, 70)
+        self.log.header().setStretchLastSection(False)
+        self.log.header().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.log.header().setSectionResizeMode(3, QHeaderView.Stretch)
         self.log.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._log_limit = 500
         v_split.addWidget(h_split)
         v_split.addWidget(self.log)
         v_split.setStretchFactor(0, 1)
         v_split.setSizes([520, 140])
         root.addWidget(v_split)
-        state_bridge.logLine.connect(self.log.appendPlainText)
+        state_bridge.logLine.connect(self._on_log_record)
 
         # loading through the preview's picker feeds the job too
         self.preview.on_file_loaded = self._on_preview_file
         state_bridge.stateChanged.connect(self._update_state)
+
+    # ---- command log ----------------------------------------------------------
+    def _on_log_record(self, rec) -> None:
+        """Append one row to the command log table.
+
+        `rec` is either a dict {seq, cmd, state, resp} from the core or a
+        plain informational string.
+        """
+        if isinstance(rec, str):
+            rec = {"seq": None, "cmd": rec,
+                   "state": self.state.snapshot().grbl_state, "resp": ""}
+        item = QTreeWidgetItem([
+            "" if rec.get("seq") is None else str(rec["seq"]),
+            rec.get("cmd", ""),
+            rec.get("state", ""),
+            rec.get("resp", ""),
+        ])
+        resp = rec.get("resp", "") or ""
+        if resp.startswith("error") or resp.startswith("ALARM") or "timeout" in resp:
+            item.setForeground(3, QBrush(QColor("#d00")))
+        self.log.addTopLevelItem(item)
+        if self.log.topLevelItemCount() > self._log_limit:
+            self.log.takeTopLevelItem(0)
+        self.log.scrollToBottom()
 
     # ---- right side panel ----------------------------------------------------
     def _side_panel(self, dcfg, pcfg, tools) -> QWidget:
