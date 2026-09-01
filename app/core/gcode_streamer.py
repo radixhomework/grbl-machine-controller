@@ -9,7 +9,7 @@ ok/error acknowledgments arrive in order (GRBL acks strictly FIFO).
 from __future__ import annotations
 
 import threading
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional
 
 RX_BUFFER_SIZE = 128
 SAFETY_MARGIN = 2  # headroom for real-time bytes that share the wire
@@ -21,7 +21,7 @@ class GCodeStreamer:
         self.on_log = on_log or (lambda s: None)
         self.rx_size = RX_BUFFER_SIZE
         self._in_flight = 0
-        self._pending: List[Tuple[int, Callable]] = []  # (nbytes, ack_cb), FIFO
+        self._pending: List[tuple] = []  # (nbytes, line, ack_cb), FIFO
         self._lock = threading.Lock()
         self._wake = threading.Event()
 
@@ -43,7 +43,7 @@ class GCodeStreamer:
         with self._lock:
             if not self._pending:
                 return False  # ack for a one-off command, not the stream
-            nbytes, cb = self._pending.pop(0)
+            nbytes, sent_line, cb = self._pending.pop(0)
             self._in_flight = max(0, self._in_flight - nbytes)
         self._wake.set()
         cb(line)
@@ -111,11 +111,10 @@ class GCodeStreamer:
                     nbytes = len(line.encode("ascii", "replace")) + 1
                     if self._in_flight + nbytes <= self.rx_size - SAFETY_MARGIN:
                         self.transport.write_line(line)
-                        self.on_log(f">> {line}")
                         self._in_flight += nbytes
                         index = self._next_index
                         self._next_index += 1
-                        self._pending.append((nbytes, self._make_ack(index, total)))
+                        self._pending.append((nbytes, line, self._make_ack(index, total)))
                         sent = True
             if not sent:
                 self._wake.wait(timeout=0.05)
@@ -124,6 +123,7 @@ class GCodeStreamer:
     def _make_ack(self, index: int, total: int) -> Callable:
         def ack(line: str):
             self._acked_count += 1
+            self.on_log(f">> {self._lines[index]}  ⇒  {line}")
             if line.startswith("error:"):
                 self._error = f"GRBL {line} at line {index + 1}: {self._lines[index]!r}"
                 self._abort = True

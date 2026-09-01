@@ -111,9 +111,8 @@ class GRBLAdapter:
                 line, result = self._cmd_queue.get(timeout=0.1)
             except queue.Empty:
                 continue
-            self.on_log(f">> {line}")
-            self._awaiting: List[CommandResult] = getattr(self, "_awaiting", [])
-            self._awaiting.append(result)
+            self._awaiting: List[tuple] = getattr(self, "_awaiting", [])
+            self._awaiting.append((line, result))
             self.transport.write_line(line)
 
     def send(self, line: str, timeout: float = 30.0) -> CommandResult:
@@ -124,6 +123,7 @@ class GRBLAdapter:
         if not result.done.is_set():
             result.ok = False
             result.error_code = -1  # timeout
+            self.on_log(f">> {line}  ⇒  ⏱ no response (timeout)")
         return result
 
     # ---- parsing ---------------------------------------------------------
@@ -131,11 +131,11 @@ class GRBLAdapter:
         line = raw.strip()
         if not line:
             return
-        self.on_log(f"<< {line}")
-
+        # periodic status reports would flood the log; they feed the UI instead
         if line.startswith("<") and line.endswith(">"):
             self._parse_status(line)
             return
+        self.on_log(f"<< {line}")
         if line.startswith("ALARM:"):
             code = int(line.split(":", 1)[1])
             self.state.update(grbl_state="Alarm", alarm_code=code, job_running=False)
@@ -146,15 +146,25 @@ class GRBLAdapter:
                     pass
             return
         if line == "ok":
-            if not (self.ack_handler and self.ack_handler(line)):
-                self._resolve_pending(True, None, line)
+            if self.ack_handler and self.ack_handler(line):
+                return  # streamed line: the streamer logs the command⇒response pair
+            pending = getattr(self, "_awaiting", [])
+            if pending:
+                self._resolve_pending(True, None, line)  # logs the pair
+            else:
+                self.on_log(f"<< {line}")  # unsolicited ack
             return
         m = re.match(r"error:(\d+)", line)
         if m:
             code = int(m.group(1))
             self.state.update(last_error=code)
-            if not (self.ack_handler and self.ack_handler(line)):
+            if self.ack_handler and self.ack_handler(line):
+                return
+            pending = getattr(self, "_awaiting", [])
+            if pending:
                 self._resolve_pending(False, code, line)
+            else:
+                self.on_log(f"<< {line}")
             return
         if line.startswith("[PRB:"):
             self._parse_probe(line)
@@ -166,13 +176,16 @@ class GRBLAdapter:
 
     def _resolve_pending(self, ok: bool, code, response: str) -> None:
         # single-flight: one buffered command in flight from _cmd_loop
-        pending: List[CommandResult] = getattr(self, "_awaiting", [])
+        pending: List[tuple] = getattr(self, "_awaiting", [])
         if pending:
-            result = pending.pop(0)
+            sent_line, result = pending.pop(0)
+            if result.done.is_set():
+                return  # already timed out in send()
             result.ok = ok
             result.error_code = code
             result.response = response
             result.done.set()
+            self.on_log(f">> {sent_line}  ⇒  {response}")
 
     def _parse_status(self, line: str) -> None:
         body = line[1:-1]
@@ -260,7 +273,9 @@ class GRBLAdapter:
         return self._probe_result
 
     def set_work_offset(self, wcs: str, x=None, y=None, z=None) -> CommandResult:
-        p = int(wcs[1:]) if wcs.startswith("G") and wcs[1:].isdigit() else 1
+        # G54..G59 -> GRBL P1..P6
+        p = int(wcs[1:]) - 53 if wcs.upper().startswith("G") and wcs[1:].isdigit() else 1
+        p = max(1, min(6, p))
         parts = [f"G10L20P{p}"]
         for ax, v in (("X", x), ("Y", y), ("Z", z)):
             if v is not None:
