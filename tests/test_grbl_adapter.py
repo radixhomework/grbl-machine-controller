@@ -83,7 +83,7 @@ def test_probe_xy_zero_offset_and_compensation(rig):
     assert fake.wco[0] == pytest.approx(-17.0, abs=0.01)   # face is the zero
 
     fake.probe_result = -20.0
-    r = pc.run_edge(ProbeConfig(direction="X-", tool_diameter=6.0, travel=-20, zero_offset=5.0))
+    r = pc.run_edge(ProbeConfig(direction="X-", tool_diameter=6.0, travel=-20, probe_size=5.0))
     assert r.ok
     time.sleep(0.3)
     assert fake.wco[0] == pytest.approx(-22.0, abs=0.01)   # zero 5mm into material

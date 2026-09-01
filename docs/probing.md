@@ -30,10 +30,10 @@ Each **Zero X- / Y- / Z-** button runs this sequence:
 4. **Compensate** — compute the true edge (see above). For Z, the
    **Z probe size** preference is used instead: the contact point is treated
    as being that height above the true zero (e.g. the thickness of a touch
-   plate; 0 = the probed surface is Z0). For X and Y, the **X / Y zero
-   offset** preferences apply: after compensation, the probed edge is set to
+   plate; 0 = the probed surface is Z0). For X and Y, the **X / Y probe
+   size** preferences apply: after compensation, the probed edge is set to
    read that value in the WCS. With the default 0 the edge itself becomes
-   the zero; e.g. an X zero offset of 5 places the work origin 5 mm into
+   the zero; e.g. an X probe size of 5 places the work origin 5 mm into
    the material from the probed face (the face then reads X 5.000).
 5. **Apply** — `G10 L20 P<wcs> <axis><true position>` so the work
    coordinate system reads the compensated value at the contact point.

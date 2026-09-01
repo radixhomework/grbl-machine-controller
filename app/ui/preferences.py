@@ -105,6 +105,20 @@ class PreferencesDialog(QDialog):
         self.probe_travel.setDecimals(1)
         self.probe_travel.setValue(abs(float(pcfg.get("target", 20))))
         self.probe_travel.setSuffix(" mm")
+        self.x_probe_size = QDoubleSpinBox()
+        self.x_probe_size.setRange(-100, 100)
+        self.x_probe_size.setDecimals(3)
+        self.x_probe_size.setValue(float(pcfg.get("x_probe_size", 0.0)))
+        self.x_probe_size.setSuffix(" mm")
+        self.x_probe_size.setToolTip("Value the probed X edge will read in the WCS.\n"
+                                     "Non-zero shifts the X zero into the material after the probe.")
+        self.y_probe_size = QDoubleSpinBox()
+        self.y_probe_size.setRange(-100, 100)
+        self.y_probe_size.setDecimals(3)
+        self.y_probe_size.setValue(float(pcfg.get("y_probe_size", 0.0)))
+        self.y_probe_size.setSuffix(" mm")
+        self.y_probe_size.setToolTip("Value the probed Y edge will read in the WCS.\n"
+                                     "Non-zero shifts the Y zero into the material after the probe.")
         self.z_probe_size = QDoubleSpinBox()
         self.z_probe_size.setRange(0, 100)
         self.z_probe_size.setDecimals(3)
@@ -112,27 +126,13 @@ class PreferencesDialog(QDialog):
         self.z_probe_size.setSuffix(" mm")
         self.z_probe_size.setToolTip("Height the Z contact point represents above the true zero,\n"
                                      "e.g. the thickness of a touch plate (0 = probed surface is Z0).")
-        self.x_offset_zero = QDoubleSpinBox()
-        self.x_offset_zero.setRange(-100, 100)
-        self.x_offset_zero.setDecimals(3)
-        self.x_offset_zero.setValue(float(pcfg.get("x_offset_zero", 0.0)))
-        self.x_offset_zero.setSuffix(" mm")
-        self.x_offset_zero.setToolTip("Value the probed X edge will read in the WCS.\n"
-                                      "Non-zero shifts the X zero into the material after the probe.")
-        self.y_offset_zero = QDoubleSpinBox()
-        self.y_offset_zero.setRange(-100, 100)
-        self.y_offset_zero.setDecimals(3)
-        self.y_offset_zero.setValue(float(pcfg.get("y_offset_zero", 0.0)))
-        self.y_offset_zero.setSuffix(" mm")
-        self.y_offset_zero.setToolTip("Value the probed Y edge will read in the WCS.\n"
-                                      "Non-zero shifts the Y zero into the material after the probe.")
         f.addRow("Fast feed", self.probe_fast)
         f.addRow("Slow feed", self.probe_slow)
         f.addRow("Retract", self.probe_retract)
         f.addRow("Search travel", self.probe_travel)
+        f.addRow("X probe size", self.x_probe_size)
+        f.addRow("Y probe size", self.y_probe_size)
         f.addRow("Z probe size", self.z_probe_size)
-        f.addRow("X zero offset", self.x_offset_zero)
-        f.addRow("Y zero offset", self.y_offset_zero)
         lay.addWidget(gb_probe)
 
         gb_tools = QGroupBox("Tool table (one per line: number, diameter, note)")
@@ -162,8 +162,8 @@ class PreferencesDialog(QDialog):
             fast_feed=self.probe_fast.value(), slow_feed=self.probe_slow.value(),
             retract=self.probe_retract.value(), target=self.probe_travel.value(),
             z_probe_size=self.z_probe_size.value(),
-            x_offset_zero=self.x_offset_zero.value(),
-            y_offset_zero=self.y_offset_zero.value())
+            x_probe_size=self.x_probe_size.value(),
+            y_probe_size=self.y_probe_size.value())
         self._config.setdefault("mqtt", {}).update(
             enabled=self.mqtt_enabled.isChecked(), host=self.mqtt_host.text().strip(),
             port=self.mqtt_port.value(), username=self.mqtt_user.text().strip(),

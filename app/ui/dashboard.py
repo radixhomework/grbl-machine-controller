@@ -272,7 +272,7 @@ class Dashboard(QWidget):
             retract=float(self.probe_cfg.get("retract", 2.0)),
             travel=-abs(float(self.probe_cfg.get("target", 20))),
             wcs=self.wcs.text().strip() or "G54",
-            zero_offset=float(self.probe_cfg.get(f"{direction[0].lower()}_offset_zero", 0.0)),
+            probe_size=float(self.probe_cfg.get(f"{direction[0].lower()}_probe_size", 0.0)),
             z_ref_height=float(self.probe_cfg.get("z_probe_size", 0.0)),
         )
 

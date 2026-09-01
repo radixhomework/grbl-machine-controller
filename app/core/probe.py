@@ -26,8 +26,9 @@ class ProbeConfig:
     retract: float = 2.0
     travel: float = -20.0     # search distance sign follows the direction
     wcs: str = "G54"
-    zero_offset: float = 0.0  # X/Y: the probed edge will read this value in the WCS,
-                              # i.e. the zero sits this far into the material
+    probe_size: float = 0.0   # X/Y: the probed edge will read this value in the WCS
+                              # (e.g. the size of a touch-off device); zero sits this
+                              # far into the material
     z_ref_height: float = 0.0  # mm: for Z probes, the height the contact point
                                # represents above the true zero (e.g. touch-plate thickness)
 
@@ -83,10 +84,10 @@ class ProbeController:
                 # contact point sits z_ref_height above the true zero
                 v = cfg.z_ref_height
             else:
-                # value so that the EDGE reads `zero_offset` in the WCS:
-                # contact center reads sign*(radius - offset); with offset 0
-                # the tool radius compensates and the edge becomes zero.
-                v = sign * (cfg.tool_diameter / 2.0 - cfg.zero_offset)
+                # value so that the EDGE reads `probe_size` in the WCS:
+                # contact center reads sign*(radius - probe_size); with probe
+                # size 0 the tool radius compensates and the edge becomes zero.
+                v = sign * (cfg.tool_diameter / 2.0 - cfg.probe_size)
             result.compensated = edge
 
             self.on_log(f"Probe: contact at {raw:.3f}, edge at {edge:.3f}, "
