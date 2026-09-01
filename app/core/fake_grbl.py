@@ -41,6 +41,8 @@ class FakeGRBL:
         self._pending: List[str] = []
         self._lock = threading.Lock()
         self._motion_thread: Optional[threading.Thread] = None
+        self._move_queue: List[tuple] = []   # serialized, like real GRBL's planner
+        self._queue_cond = threading.Condition()
         self.probe_result: float = -10.0   # axis position where contact happens
         self.probe_contact = True
         self._intro_done = False
@@ -147,42 +149,56 @@ class FakeGRBL:
         return tgt
 
     def _animate(self, target: List[float], feed_mm_min: float, kind: str, extra: Optional[dict] = None) -> None:
-        def run():
-            start = list(self.mpos)
-            dist = max(abs(t - s) for t, s in zip(target, start)) or 0.001
-            self.state = "Jog" if kind == "jog" else ("Run" if kind != "probe" else "Run")
-            duration = max(0.02, min(2.0, dist / max(feed_mm_min, 1.0) * 60.0))
-            t0 = time.time()
-            hit = None
-            while True:
-                if self._jog_cancelled and kind == "jog":
+        """Queue a motion; a single worker executes moves in order (no overlap)."""
+        with self._queue_cond:
+            self._move_queue.append((target, feed_mm_min, kind, extra or {}))
+            if self._motion_thread is None or not self._motion_thread.is_alive():
+                self._motion_thread = threading.Thread(target=self._motion_worker, daemon=True)
+                self._motion_thread.start()
+
+    def _motion_worker(self) -> None:
+        while True:
+            with self._queue_cond:
+                if not self._move_queue:
+                    self._motion_thread = None
+                    return
+                target, feed, kind, extra = self._move_queue.pop(0)
+            self._run_motion(target, feed, kind, extra)
+
+    def _run_motion(self, target: List[float], feed_mm_min: float, kind: str, extra: dict) -> None:
+        start = list(self.mpos)
+        dist = max(abs(t - s) for t, s in zip(target, start)) or 0.001
+        self.state = "Jog" if kind == "jog" else "Run"
+        duration = max(0.02, min(2.0, dist / max(feed_mm_min, 1.0) * 60.0))
+        t0 = time.time()
+        hit = None
+        while True:
+            if self._jog_cancelled and kind == "jog":
+                break
+            frac = min(1.0, (time.time() - t0) / duration)
+            for k in range(3):
+                self.mpos[k] = start[k] + (target[k] - start[k]) * frac
+            if kind == "probe" and self.probe_contact:
+                axis = extra["axis"]
+                sign = extra["sign"]
+                pos = self.mpos[axis]
+                if (sign < 0 and pos <= self.probe_result) or (sign > 0 and pos >= self.probe_result):
+                    hit = frac
+                    self.mpos[axis] = self.probe_result
                     break
-                frac = min(1.0, (time.time() - t0) / duration)
-                for k in range(3):
-                    self.mpos[k] = start[k] + (target[k] - start[k]) * frac
-                if kind == "probe" and self.probe_contact:
-                    axis = extra["axis"]
-                    sign = extra["sign"]
-                    pos = self.mpos[axis]
-                    if (sign < 0 and pos <= self.probe_result) or (sign > 0 and pos >= self.probe_result):
-                        hit = frac
-                        self.mpos[axis] = self.probe_result
-                        break
-                if frac >= 1.0:
-                    break
-                time.sleep(0.01)
-            if kind == "probe":
-                if hit is not None:
-                    self._emit(f"[PRB:{self.mpos[0]:.3f},{self.mpos[1]:.3f},{self.mpos[2]:.3f}:{1}]")
-                    self._emit("ok")
-                else:
-                    self._emit("error:8")
-                    self.alarm = True
-                    self.state = "Alarm"
+            if frac >= 1.0:
+                break
+            time.sleep(0.01)
+        if kind == "probe":
+            if hit is not None:
+                self._emit(f"[PRB:{self.mpos[0]:.3f},{self.mpos[1]:.3f},{self.mpos[2]:.3f}:{1}]")
+                self._emit("ok")
             else:
-                self.state = "Idle"
-        self._motion_thread = threading.Thread(target=run, daemon=True)
-        self._motion_thread.start()
+                self._emit("error:8")
+                self.alarm = True
+                self.state = "Alarm"
+        else:
+            self.state = "Idle"
 
     def _start_jog(self, params: str) -> None:
         m = re.search(r"F(\d+\.?\d*)", params)

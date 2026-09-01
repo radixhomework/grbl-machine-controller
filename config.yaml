@@ -23,6 +23,8 @@ probe:
   retract: 2.0
   target: 20.0
   z_probe_size: 0.0
+  x_offset_zero: 0.0
+  y_offset_zero: 0.0
 defaults:
   jog_feed: 2000
   jog_distance: 1.0

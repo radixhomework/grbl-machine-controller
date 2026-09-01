@@ -6,6 +6,7 @@ import pytest
 
 from app.core.fake_grbl import FakeGRBL
 from app.core.grbl_adapter import GRBLAdapter
+from app.core.probe import ProbeController
 from app.core.state import MachineState
 
 
@@ -62,6 +63,30 @@ def test_work_offset_via_g10(rig):
     assert fake.wco == [10.0, 5.0, 0.0]
     time.sleep(0.2)
     assert state.snapshot().wpos.x == pytest.approx(0.0, abs=0.01)
+
+
+def test_probe_xy_zero_offset_and_compensation(rig):
+    """X- probe, 6mm tool: contact center at raw=-20, part face at -17.
+
+    G10 value v = sign*(radius - offset) must put the face at:
+      offset 0 -> wco = -17 (face reads 0)
+      offset 5 -> wco = -22 (face reads 5, zero pushed into material)
+    """
+    fake, adapter, state = rig
+    pc = ProbeController(adapter)
+    from app.core.probe import ProbeConfig
+
+    fake.probe_result = -20.0
+    r = pc.run_edge(ProbeConfig(direction="X-", tool_diameter=6.0, travel=-20))
+    assert r.ok
+    time.sleep(0.3)
+    assert fake.wco[0] == pytest.approx(-17.0, abs=0.01)   # face is the zero
+
+    fake.probe_result = -20.0
+    r = pc.run_edge(ProbeConfig(direction="X-", tool_diameter=6.0, travel=-20, zero_offset=5.0))
+    assert r.ok
+    time.sleep(0.3)
+    assert fake.wco[0] == pytest.approx(-22.0, abs=0.01)   # zero 5mm into material
 
 
 def test_probe_reports_contact_position(rig):

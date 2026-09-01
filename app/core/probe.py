@@ -26,6 +26,8 @@ class ProbeConfig:
     retract: float = 2.0
     travel: float = -20.0     # search distance sign follows the direction
     wcs: str = "G54"
+    zero_offset: float = 0.0  # X/Y: the probed edge will read this value in the WCS,
+                              # i.e. the zero sits this far into the material
     z_ref_height: float = 0.0  # mm: for Z probes, the height the contact point
                                # represents above the true zero (e.g. touch-plate thickness)
 
@@ -75,21 +77,26 @@ class ProbeController:
             raw = raw_pos[0]           # axis coordinate as float
             result.raw_position = raw_pos[1]
 
+            edge = self.compensate(raw, cfg.tool_diameter, cfg.direction)
+
             if axis == "Z":
                 # contact point sits z_ref_height above the true zero
-                true_val = cfg.z_ref_height
+                v = cfg.z_ref_height
             else:
-                true_val = self.compensate(raw, cfg.tool_diameter, cfg.direction)
-            result.compensated = true_val
+                # value so that the EDGE reads `zero_offset` in the WCS:
+                # contact center reads sign*(radius - offset); with offset 0
+                # the tool radius compensates and the edge becomes zero.
+                v = sign * (cfg.tool_diameter / 2.0 - cfg.zero_offset)
+            result.compensated = edge
 
-            self.on_log(f"Probe: contact at {raw:.3f}, edge at {true_val:.3f} "
-                        f"(r={cfg.tool_diameter / 2:.3f})")
-            r = self.adapter.set_work_offset(cfg.wcs, **{axis.lower(): true_val})
+            self.on_log(f"Probe: contact at {raw:.3f}, edge at {edge:.3f}, "
+                        f"zero value {v:.3f} (r={cfg.tool_diameter / 2:.3f})")
+            r = self.adapter.set_work_offset(cfg.wcs, **{axis.lower(): v})
             if not r.ok:
                 result.message = f"G10 failed: {r.response}"
                 return result
             # pull off the surface so the tool is clear afterwards
-            self.adapter.move_absolute(**{axis.lower(): raw + sign * cfg.retract}, feedrate=600)
+            self.adapter.move_absolute(**{axis.lower(): raw - sign * cfg.retract}, feedrate=600)
             result.ok = True
             return result
         except RuntimeError as e:
@@ -116,8 +123,8 @@ class ProbeController:
         raw = self.adapter.start_probe(axis, travel, cfg.fast_feed)
         self._check_cancel()
         raw_val = getattr(raw, axis.lower())
-        # retract away from the surface
-        back = raw_val + sign * cfg.retract
+        # retract away from the surface (opposite the approach direction)
+        back = raw_val - sign * cfg.retract
         r = self.adapter.move_absolute(**{axis.lower(): back}, feedrate=600)
         if not r.ok:
             raise RuntimeError("Retract failed")

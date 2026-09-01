@@ -30,6 +30,8 @@ probe:
   target: -20.0                # search distance (sign = probing direction)
   z_probe_size: 0.0            # height the Z contact represents above true
                                # zero, e.g. touch-plate thickness
+  x_offset_zero: 0.0           # value the probed X edge reads in the WCS
+  y_offset_zero: 0.0           # value the probed Y edge reads in the WCS
 
 defaults:
   jog_feed: 1000               # initial jog feed (mm/min)
@@ -46,5 +48,8 @@ defaults:
   origin is placed that many millimeters below the contact point. With a
   10 mm touch plate, set it to `10.0` and the plate's top surface probes to
   work Z = 10.0, putting Z0 at the table/part underneath.
+- `x_offset_zero` / `y_offset_zero` apply to X/Y edge probing: the probed
+  face reads that value in the WCS, shifting the zero into the material
+  (e.g. `5.0` makes the probed face read X 5.000).
 - The file is rewritten by the Preferences dialog in normalized form
   (comments are lost on save).
