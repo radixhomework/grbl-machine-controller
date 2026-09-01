@@ -1,0 +1,90 @@
+name: build
+
+on:
+  push:
+    branches: [main, "feat/**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed by the release job to attach artifacts to a tag
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Unit tests
+        run: pytest -q
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest        # x64 Linux
+            target: linux-x64
+          - os: ubuntu-24.04-arm     # native ARM64 Linux runner (public repos)
+            target: linux-arm64
+          - os: windows-latest       # x64 Windows
+            target: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build (PyInstaller one-file)
+        run: pyinstaller grblmc.spec --noconfirm
+
+      - name: Package
+        shell: bash
+        run: |
+          NAME="grbl-machine-controller-${{ matrix.target }}"
+          mkdir -p "pkg/$NAME"
+          if [ -f dist/grbl-machine-controller.exe ]; then
+            cp dist/grbl-machine-controller.exe "pkg/$NAME/"
+          else
+            cp dist/grbl-machine-controller "pkg/$NAME/"
+          fi
+          cp config.yaml "pkg/$NAME/"
+          cp README.md "pkg/$NAME/"
+          cp -r docs "pkg/$NAME/docs"
+          python -c "import shutil, sys; shutil.make_archive(sys.argv[1], 'zip', sys.argv[2])" "pkg/$NAME" "pkg/$NAME"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.target }}
+          path: pkg/*.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" artifacts/*.zip \
+            --title "$GITHUB_REF_NAME" --generate-notes
