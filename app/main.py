@@ -86,7 +86,10 @@ def start_mqtt(config: dict, state, jobs, adapter):
 
 
 def main() -> int:
+    from . import __version__
+
     parser = argparse.ArgumentParser(description="GRBL machine controller")
+    parser.add_argument("--version", action="version", version=f"GRBL Machine Controller {__version__}")
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--port", help="override serial port")
     parser.add_argument("--fake", action="store_true", help="run against the built-in GRBL simulator")

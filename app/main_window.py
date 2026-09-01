@@ -113,10 +113,13 @@ class MainWindow(QMainWindow):
 
     def _about(self) -> None:
         from PySide6.QtWidgets import QMessageBox
+
+        from . import __version__
+
         box = QMessageBox(self)
         box.setWindowTitle("About")
         box.setText(
-            "GRBL machine controller\n\n"
+            f"GRBL machine controller {__version__}\n\n"
             "G-code streaming, jogging, tool-compensated probing,\n"
             "and Home Assistant MQTT integration.\n\n"
             "GRBL is the motion controller; this app streams and supervises.")

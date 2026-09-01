@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "grbl-machine-controller"
-version = "0.1.0"
+dynamic = ["version"]
 description = "GRBL CNC controller appliance with Home Assistant MQTT integration"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -21,6 +21,9 @@ dev = ["pytest>=7.0", "ruff"]
 
 [project.scripts]
 grbl-machine-controller = "app.main:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "app.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["app*"]

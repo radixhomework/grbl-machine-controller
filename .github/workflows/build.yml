@@ -53,7 +53,13 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          NAME="grbl-machine-controller-${{ matrix.target }}"
+          # on tag builds (v1.0.0) use the app version, otherwise the commit sha
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(git rev-parse --short HEAD)"
+          fi
+          NAME="grbl-machine-controller-$VERSION-${{ matrix.target }}"
           mkdir -p "pkg/$NAME"
           if [ -f dist/grbl-machine-controller.exe ]; then
             cp dist/grbl-machine-controller.exe "pkg/$NAME/"
