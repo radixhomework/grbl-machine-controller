@@ -9,12 +9,10 @@ from PySide6.QtWidgets import QMainWindow, QStatusBar, QLabel
 
 from .core.job_manager import JobManager
 from .core.state import MachineState
+from .resources import LOGO
 from .ui.bridge import StateBridge
 from .ui.dashboard import Dashboard, _Worker
 from .ui.preferences import PreferencesDialog
-
-_ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
-LOGO = os.path.join(_ASSETS, "logo.png")
 
 
 class MainWindow(QMainWindow):
@@ -128,6 +126,10 @@ class MainWindow(QMainWindow):
         box.exec()
 
     def _update_status(self, s, _old) -> None:
+        title = "GRBL Machine Controller"
+        if s.job_file:
+            title += f" — {s.job_file}"
+        self.setWindowTitle(title)
         self.status_label.setText(
             f"State: {s.grbl_state}   MPos: {s.mpos.x:.3f}, {s.mpos.y:.3f}, {s.mpos.z:.3f}   "
             f"Ov: {s.overrides.feed}%   "

@@ -113,8 +113,10 @@ def main() -> int:
         from PySide6.QtWidgets import QApplication
 
         from .main_window import LOGO, MainWindow
+        from .ui.style import apply_theme
 
         app = QApplication(sys.argv)
+        apply_theme(app)
         if os.path.exists(LOGO):
             app.setWindowIcon(QIcon(LOGO))
         win = MainWindow(adapter, state, jobs, config, config_path=args.config)

@@ -10,8 +10,19 @@ import math
 import re
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPalette
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPalette, QPixmap
 from PySide6.QtWidgets import QComboBox, QWidget
+
+from ..resources import LOGO
+
+_logo_cache: QPixmap | None = None
+
+
+def _logo_pixmap() -> QPixmap:
+    global _logo_cache
+    if _logo_cache is None:
+        _logo_cache = QPixmap(LOGO)
+    return _logo_cache
 
 WORD_RE = re.compile(r"([XYZ])(-?\d+\.?\d*)", re.IGNORECASE)
 MODE_RE = re.compile(r"\b(G0|G1|G00|G01)\b", re.IGNORECASE)
@@ -120,6 +131,24 @@ class Preview3D(QWidget):
         if self.on_file_loaded:
             self.on_file_loaded(path)
 
+    # ---- empty state ---------------------------------------------------------
+    def _paint_empty_state(self, p: QPainter, w: int, h: int) -> None:
+        """Logo watermark centered in the panel, with a muted hint below."""
+        logo = _logo_pixmap()
+        if not logo.isNull():
+            max_side = min(w, h) * 0.45
+            scaled = logo.scaled(int(max_side), int(max_side),
+                                 Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            p.setOpacity(0.30)
+            p.drawPixmap((w - scaled.width()) // 2, (h - scaled.height()) // 2 - 12, scaled)
+            p.setOpacity(1.0)
+        p.setPen(QColor("#76604E"))
+        f = QFont(self.font())
+        f.setPointSize(max(9, self.font().pointSize()))
+        p.setFont(f)
+        p.drawText(self.rect().adjusted(0, 0, 0, -8), Qt.AlignBottom | Qt.AlignHCenter,
+                   "Open a G-code file to preview its toolpath  —  File ▸ Open G-code (Ctrl+O)")
+
     # ---- projection -----------------------------------------------------
     def _project(self, p, w, h):
         # translate (flip Z: CNC +Z is up, screen Y is down)
@@ -163,8 +192,7 @@ class Preview3D(QWidget):
         p.setRenderHint(QPainter.Antialiasing)
         w, h = self.width(), self.height()
         if not self.segs:
-            p.setPen(QColor("#888"))
-            p.drawText(self.rect(), Qt.AlignCenter, "No toolpath loaded")
+            self._paint_empty_state(p, w, h)
             p.end()
             return
 
@@ -184,7 +212,7 @@ class Preview3D(QWidget):
             a, b, is_cut = self.segs[i]
             pa = self._project(a, w, h)
             pb = self._project(b, w, h)
-            pen = QPen(QColor("#1c81d2") if is_cut else QColor("#bbbbbb"), 2 if is_cut else 1)
+            pen = QPen(QColor("#4D5947") if is_cut else QColor("#C6BFA9"), 2 if is_cut else 1)
             p.setPen(pen)
             p.drawLine(QPoint(int(pa[0]), int(pa[1])), QPoint(int(pb[0]), int(pb[1])))
 
@@ -194,17 +222,17 @@ class Preview3D(QWidget):
             cx, cy = int(px), int(py)
             # drop line to Z=0 plane for spatial reference
             zx, zy, _ = self._project((self.tool_pos[0], self.tool_pos[1], 0.0), w, h)
-            p.setPen(QPen(QColor("#f55"), 1, Qt.DashLine))
+            p.setPen(QPen(QColor("#8A5E61"), 1, Qt.DashLine))
             p.drawLine(cx, cy, int(zx), int(zy))
-            p.setPen(QPen(QColor("#f55"), 2))
-            p.setBrush(QBrush(QColor("#f55")))
+            p.setPen(QPen(QColor("#8A5E61"), 2))
+            p.setBrush(QBrush(QColor("#8A5E61")))
             p.drawEllipse(QPoint(cx, cy), 5, 5)
             p.setBrush(Qt.NoBrush)
 
         # axes triad at origin
         origin = (0.0, 0.0, 0.0)
         L = self.radius * 0.25
-        for tip, color in (((L, 0, 0), "#e55"), ((0, L, 0), "#5c5"), ((0, 0, L), "#59d")):
+        for tip, color in (((L, 0, 0), "#8A5E61"), ((0, L, 0), "#4D5947"), ((0, 0, L), "#9A7656")):
             pa = self._project(origin, w, h)
             pb = self._project(tip, w, h)
             p.setPen(QPen(QColor(color), 3))

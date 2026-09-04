@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QStyle
 
 from ..core.probe import ProbeConfig, ProbeController
 from .preview3d import Preview3D
+from .style import MOSS, RADISH
 
 
 def _mono():
@@ -64,9 +65,7 @@ class Dashboard(QWidget):
         for s in (v_split, h_split):
             s.setHandleWidth(3)
             s.setChildrenCollapsible(False)
-            s.setStyleSheet(
-                "QSplitter::handle { background: palette(mid); }"
-                "QSplitter::handle:hover { background: #4a90d9; }")
+            # handle colors come from the app stylesheet (chart theme)
 
         self.preview = Preview3D()
         self.preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -119,7 +118,7 @@ class Dashboard(QWidget):
         ])
         resp = rec.get("resp", "") or ""
         if resp.startswith("error") or resp.startswith("ALARM") or "timeout" in resp:
-            item.setForeground(3, QBrush(QColor("#d00")))
+            item.setForeground(3, QBrush(QColor("#8A5E61")))
         self.log.addTopLevelItem(item)
         if self.log.topLevelItemCount() > self._log_limit:
             self.log.takeTopLevelItem(0)
@@ -463,11 +462,11 @@ class Dashboard(QWidget):
             self.m_labels[ax].setText(f"{v:8.3f}")
         alarm = s.grbl_state == "Alarm"
         self.state_label.setText(s.grbl_state)
-        self.state_label.setStyleSheet("color:#d00;font-weight:bold" if alarm else
-                                       ("color:#080;font-weight:bold" if s.job_running else ""))
+        self.state_label.setStyleSheet(f"color:{RADISH};font-weight:bold" if alarm else
+                                       (f"color:{MOSS};font-weight:bold" if s.job_running else ""))
         code = s.alarm_code if alarm else s.last_error
         self.code_label.setText(f"Code: {'—' if code is None else code}")
-        self.code_label.setStyleSheet("color:#d00" if code is not None else "")
+        self.code_label.setStyleSheet(f"color:{RADISH}" if code is not None else "")
         self.live_rpm.setText(f"S {s.spindle_rpm:.0f} rpm")
         self.spindle_btn.blockSignals(True)
         self.spindle_btn.setChecked(s.spindle_on)
